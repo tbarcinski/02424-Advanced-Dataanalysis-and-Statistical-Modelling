@@ -18,6 +18,8 @@ library(nlme)
 library(numDeriv)
 ?qqPlot
 
+# changes 
+
 dat <- read.table("dioxin.csv", sep=',', head=TRUE)
 df <- data.frame(dat)
 summary(df)
