@@ -747,7 +747,8 @@ formula(AM3)
 
 #Reestimate the final model with all observations
 attach(DATA)
-AM3 <- lm(formula(AM3))
+AM3 <- lm(log(DIOX) ~ O2COR + PLANT + TIME + LAB + CO2 + TROEG + POVN + 
+                      poly(log(HCL), 2) + TIME:poly(NEFFEKT, 1))
 
 
 
@@ -831,9 +832,6 @@ AM3 <- lm(formula(AM3))
 
 
 ### Model diagnostics ----------------------------------------------------------
-
-# Chose model for diagnostics 
-AM3
 
 stdresid <- rstandard(AM3)
 
