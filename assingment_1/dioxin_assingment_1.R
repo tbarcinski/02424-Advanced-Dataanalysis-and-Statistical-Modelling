@@ -19,6 +19,8 @@ library(nlme)
 library(numDeriv)
 library(fitdistrplus)
 library(lmtest)
+library(leaps)
+library(plotly)
 
 # Reading data
 dat <- read.table("dioxin.csv", sep=',', head=TRUE)
@@ -30,15 +32,53 @@ colSums(is.na(df))
 # PRSEK, CO, SO2
 sum(is.na(df))
 
+cols <- c("PLANT", "TIME", "LAB", "OXYGEN", "LOAD", "PRSEK")
+df[cols] <- lapply(df[cols], as.factor)
+df <- data.frame(df)
+str(df)
+attach(df)
+
+########## checking ##############3
+AM3 <- lm(log(DIOX) ~ O2COR + PLANT + TIME + LAB + CO2 + TROEG + POVN + 
+            poly(log(HCL), 2) + TIME:poly(NEFFEKT, 1), data = data.frame(df))
+summary(AM3)
+c(AIC(AM3), BIC(AM3))
+
+model_interactions <- lm(log(DIOX) ~ O2COR + PLANT + TIME + LAB + CO2 + TROEG + POVN + 
+                           poly(log(HCL), 2) + TIME:poly(NEFFEKT, 1) + O2COR*NEFFEKT*QRAT, data = df)
+
+summary(model_interactions)
+drop1(model_interactions, test = "F")
+
+
+boxcox(AM3)
+
+par(mfrow = c(2, 2))
+plot(AM3)
+
 par(mfrow = c(2, 1))
 hist(df$CO, breaks = 20)
 hist(df$SO2, breaks = 20)
 
+
+fig <- plot_ly(df, x = ~O2COR, y = ~NEFFEKT, z = ~QRAT,
+               marker = list(color = ~(DIOX), colorscale = c('#FFE1A1', '#683531'), showscale = TRUE))
+fig <- fig %>% add_markers()
+fig <- fig %>% layout(scene = list(xaxis = list(title = 'O2COR'),
+                                   yaxis = list(title = 'NEFFEKT'),
+                                   zaxis = list(title = 'QRAT')),
+                      annotations = list(
+                        x = 1.13,
+                        y = 1.05,
+                        text = 'log(DIOX)',
+                        xref = 'paper',
+                        yref = 'paper',
+                        showarrow = FALSE
+                      ))
+fig
+
 # changing to factors
-cols <- c("PLANT", "TIME", "LAB", "OXYGEN", "LOAD", "PRSEK")
-df[cols] <- lapply(df[cols], as.factor)
-str(df)
-attach(df)
+
 
 ## checking for normality
 boxcox <- boxcox(DIOX ~ 1)
@@ -48,19 +88,122 @@ shapiro.test(log(df$DIOX))
 lillie.test(log(df$DIOX))
 # wallyplot R residuals
 
+# Boxplot of the measured active variables vs the planned active variables
+g1 <- ggplot(DATA, aes(x=OXYGEN, y=O2COR)) +
+  geom_boxplot() +
+  theme(axis.text=element_text(size=14,face="bold"),
+        axis.title=element_text(size=16,face="bold"),
+        legend.position="none") + 
+  xlab("OXYGEN") + ylab("O2COR")
+
+g2 <- ggplot(DATA, aes(x=LOAD, y=NEFFEKT)) +
+  geom_boxplot() +
+  theme(axis.text=element_text(size=14,face="bold"),
+        axis.title=element_text(size=16,face="bold"),
+        legend.position="none") + 
+  xlab("LOAD") + ylab("NEFFEKT")
+
+g3 <- ggplot(DATA, aes(x=PRSEK, y=QRAT)) + geom_boxplot() +
+  theme(axis.text=element_text(size=14,face="bold"),
+        axis.title=element_text(size=16,face="bold"),
+        legend.position="none") + 
+  xlab("PRSEK") + ylab("QRAT")
+
+g1 + g2 + g3 + plot_annotation(
+  title = 'Discretized vs continuous active variables',
+  theme=theme(plot.title=element_text(hjust=0.5, size = 22))
+)
+
+# grid.arrange(g1, g2, g3, nrow=1, ncol=3,
+#              top=textGrob("Daily QC: Blue",gp=gpar(fontsize=20,font=3)))
+# 
+
+# Boxplots
+g1 <- ggplot(DATA, aes(x=OXYGEN, y=DIOX)) +
+  geom_boxplot() +
+  theme(axis.text=element_text(size=14,face="bold"),
+        axis.title=element_text(size=16,face="bold"),
+        legend.position="none")
+
+g2 <- ggplot(DATA, aes(x=LOAD, y=DIOX)) +
+  geom_boxplot() +
+  theme(axis.text=element_text(size=14,face="bold"),
+        axis.title=element_text(size=16,face="bold"),
+        legend.position="none")
+
+g3 <- ggplot(DATA, aes(x=PRSEK, y=DIOX)) + geom_boxplot() +
+  theme(axis.text=element_text(size=14,face="bold"),
+        axis.title=element_text(size=16,face="bold"),
+        legend.position="none")
+
+g1_log <- ggplot(DATA, aes(x=OXYGEN, y=log(DIOX))) +
+  geom_boxplot() +
+  theme(axis.text=element_text(size=14,face="bold"),
+        axis.title=element_text(size=16,face="bold"),
+        legend.position="none")
+
+g2_log <- ggplot(DATA, aes(x=LOAD, y=log(DIOX))) +
+  geom_boxplot() +
+  theme(axis.text=element_text(size=14,face="bold"),
+        axis.title=element_text(size=16,face="bold"),
+        legend.position="none")
+
+g3_log <- ggplot(DATA, aes(x=PRSEK, y=log(DIOX))) + geom_boxplot() +
+  theme(axis.text=element_text(size=14,face="bold"),
+        axis.title=element_text(size=16,face="bold"),
+        legend.position="none")
+
+(g1 + g2 + g3) / (g1_log + g2_log + g3_log) + plot_annotation(
+  title = 'Dependent variable vs active variables in the original and the log domain',
+  theme=theme(plot.title=element_text(hjust=0.5, size = 20))
+)
+
+
+g4 <- ggplot(DATA, aes(x=PLANT, y=DIOX, colour=TIME)) +
+  geom_boxplot() +
+  theme(axis.text=element_text(size=14,face="bold"),
+        axis.title=element_text(size=16,face="bold"),
+        legend.position="right")
+
+g5 <- ggplot(DATA, aes(x=LAB, y=DIOX)) +
+  geom_boxplot() +
+  theme(axis.text=element_text(size=14,face="bold"),
+        axis.title=element_text(size=16,face="bold"),
+        legend.position="none")
+
+g4_log <- ggplot(DATA, aes(x=PLANT, y=log(DIOX), colour=TIME)) +
+  geom_boxplot() +
+  theme(axis.text=element_text(size=14,face="bold"),
+        axis.title=element_text(size=16,face="bold"),
+        legend.position="right")
+
+g5_log <- ggplot(DATA, aes(x=LAB, y=log(DIOX))) +
+  geom_boxplot() +
+  theme(axis.text=element_text(size=14,face="bold"),
+        axis.title=element_text(size=16,face="bold"),
+        legend.position="none")
+
+(g4 + g5) / (g4_log + g5_log) + plot_annotation(
+  title = 'Dependent variable vs block variables in the original and the log domain',
+  theme=theme(plot.title=element_text(hjust=0.5, size = 20))
+)
+
+grid.arrange(g1, g2, g3, g4, g5, nrow=2, ncol=3)
+
+
 ### EDA
 # 1) target vs active variables + block variables
 df_part <- df[,c("DIOX", "O2COR", "NEFFEKT", "QRAT", "LAB")]
 df_part["diox_log"] <- log(df_part$DIOX)
 df_part <- df_part %>% select(-DIOX)
 p_lab <- ggpairs(df_part, aes(color = LAB),
-                  columns = c(!"diox_log", "O2COR", "NEFFEKT", "QRAT"))
+                  columns = c("diox_log", "O2COR", "NEFFEKT", "QRAT"))
 p_lab
 
 df_part <- df[,c("DIOX", "O2COR", "NEFFEKT", "QRAT", "PLANT")]
 df_part["diox_log"] <- log(df_part$DIOX)
 df_part <- df_part %>% select(-DIOX)
-p_plant <- ggpairs(df_part, aes(color = PLANT),
+p_plant <- ggpairs(df_part, aes(color = PLANT, shape = TIME),
                   columns = c("diox_log", "O2COR", "NEFFEKT", "QRAT"))
 p_plant
 
@@ -72,6 +215,17 @@ df_part <- df_part %>% select(-DIOX)
 p_time <- ggpairs(df_part, aes(color = TIME),
                   columns = c("diox_log", "O2COR", "NEFFEKT", "QRAT"))
 p_time
+
+p1 <- ggplot(df, aes(x = seq(1, dim(df)[1], 1), y = DIOX)) + geom_point() +
+  xlab("Index")
+p2 <- ggplot(df, aes(x = DIOX)) + geom_histogram()
+p1_log<- ggplot(df, aes(x = seq(1, dim(df)[1], 1), y = log(DIOX))) + geom_point() +
+  xlab("Index")
+p2_log <- ggplot(df, aes(x = log(DIOX))) + geom_histogram()
+(p1 + p2) / (p1_log + p2_log) + plot_annotation(
+  title = 'Distribution of the dependent variable in the original and log domain',
+  theme=theme(plot.title=element_text(hjust=0.5, size = 18))
+)
 
 # 2) target vs active variables & passive variables + block variables
 
@@ -154,17 +308,6 @@ model = tree(log(DIOX)~., data = df)
 plot(model)
 text(model)
 
-
-## First simple model
-lm <- lm(log(DIOX) ~., data = df)
-summary(lm)
-
-par(mfrow = c(2, 2))
-plot(lm, which = 1:4)
-par(mfrow = c(1, 1))
-# 16 outlier???
-# quadratic stuff in the residuals
-
 # To do
 # 1) interactions plots between continous and factor variables
 # 2) interactions plots
@@ -174,20 +317,63 @@ par(mfrow = c(1, 1))
 # interactions
 
 ######## 1) SIMPLE ADDITIVE MODEL ############
-model_1 <- lm(log(DIOX) ~ OXYGEN + LOAD + PRSEK + PLANT + TIME + LAB, data = df)
+
+table(df$PRSEK, useNA ="ifany")  # Observation 15 and 16 are missing
+tapply(df$QRAT, df$PRSEK, mean, useNA="ifany")  # Observations seems to have been "L"
+df$PRSEK[15:16] <- "L"
+attach(df)
+
+model_1 <- lm(DIOX ~ OXYGEN + LOAD + PRSEK + PLANT + TIME + LAB)
 summary(model_1)
 par(mfrow = c(2, 2))
-plot(model_1)
+plot(model_1, which = 1:4)
 
-plot(x1,residuals(fit))
+boxcox(model_1)
 
-acf(residuals(model_1))
-rstudent(model_1)[which.max(abs(rstudent(model_1)))]
+stdresid <- rstandard(model_1)
+par(mfrow=c(2, 2))
+plot(model_1, which = 1)
+plot(model_1, which = 3)
+hist(stdresid, main="", probability=TRUE, breaks=10)
+curve(dnorm, -3, 3, col="red", lwd=2, add=TRUE)
+plot(model_1, which=2)
+par(mfrow=c(1, 1))
+
+
+
+model_1_log <- lm(log(DIOX) ~ OXYGEN + LOAD + PRSEK + PLANT + TIME + LAB, data = df)
+summary(model_1_log)
+
+stdresid <- rstandard(model_1_log)
+par(mfrow=c(2, 2))
+plot(model_1_log, which = 1)
+plot(model_1_log, which = 3)
+hist(stdresid, main="", probability=TRUE, breaks=10)
+curve(dnorm, -3, 3, col="red", lwd=2, add=TRUE)
+plot(model_1_log, which=2)
+
+
+AIC(model_1_log)
+
+par(mfrow = c(2, 2))
+plot(model_1_log, which = 1:4)
+
+par(mfrow = c(1, 1))
+acf(residuals(model_1_log))
+rstudent(model_1_log)[which.max(abs(rstudent(model_1_log)))]
 # 13
-drop1(model_1, test = "F")
+drop1(model_1_log, test = "F")
 
-model_2 <- update(model_1,~. -PRSEK, data = df)
-anova(model_2, model_1, test="Chisq")
+model_2_log <- update(model_1_log,~. -PRSEK, data = df)
+summary(model_2_log)
+par(mfrow = c(2, 2))
+plot(model_2_log, which = 1:4)
+
+
+
+
+
+anova(model_2, model_1_log, test="Chisq")
 
 ### CHECKING OF ASSUMPTIONS
 ## outliers
@@ -205,7 +391,7 @@ par(mfrow = c(2, 2))
 plot(model_c1)
 
 drop1(model_c1, test = "F")
-model_c1 <- update(model_c1, ~. - QRAT)
+model_c2 <- update(model_c1, ~. - QRAT)
 summary(model_c1)
 
 anova(model_c1, model_c2, test = "Chisq")
@@ -296,7 +482,7 @@ df_con$SO2[is.na(df_con$SO2)] = to_input_so2
 
 ## in the regular domain: Adjusted R-squared:  0.9931
 attach(df_con)
-m2 <- lm(log(DIOX) ~ 
+m2 <- lm((DIOX) ~ 
            poly(O2COR,2)*PLANT + poly(NEFFEKT,2)*PLANT + poly(QRAT,2)*PLANT + 
            poly(O2COR,2)*LAB + poly(NEFFEKT,2)*LAB + poly(QRAT,1)*LAB +
            poly(O2COR,2)*TIME + poly(NEFFEKT,2)*TIME + poly(QRAT,1)*TIME +
@@ -306,6 +492,23 @@ m2 <- lm(log(DIOX) ~
 summary(m2)
 par(mfrow = c(2, 2))
 plot(m2)
+
+box_object <- boxcox(m2)
+
+lambda <- box_object$x[which.max(box_object$y)]
+diox_box_cox <- (df$DIOX ^ lambda - 1) / lambda
+
+m2_boxcox <- lm(diox_box_cox ~ 
+                  poly(O2COR,2)*PLANT + poly(NEFFEKT,2)*PLANT + poly(QRAT,2)*PLANT + 
+                  poly(O2COR,2)*LAB + poly(NEFFEKT,2)*LAB + poly(QRAT,1)*LAB +
+                  poly(O2COR,2)*TIME + poly(NEFFEKT,2)*TIME + poly(QRAT,1)*TIME +
+                  QROEG + TOVN + TROEG + POVN + CO2 + CO + SO2 + log(HCL) + H2O + 
+                  QROEG:PLANT + CO2:PLANT +
+                  log(HCL):LAB, data = df)
+summary(m2_boxcox, cor = T)
+par(mfrow = c(2, 2))
+plot(m2_boxcox)
+
 # weird stuff happens: some observations have a leverage of 1 ...
 plot(rstudent(m2))
 
@@ -421,7 +624,9 @@ plot(AM1)
 AM1 <- update(AM1, . ~ . - TROEG)
 drop1(AM1, test="F")
 
-# AM1 <- update(AM1, . ~ . - poly(QRAT, 2):TIME)
+AM1 <- update(AM1, . ~ . - poly(QRAT, 2):TIME)
+drop1(AM1, test="F")
+
 AM1 <- update(AM1, . ~ . - poly(QRAT, 2):TIME + poly(QRAT, 1):TIME)
 drop1(AM1, test="F")
 AM1 <- update(AM1, . ~ . - poly(QRAT, 1):TIME)
@@ -478,15 +683,51 @@ par(mfrow = c(2, 2))
 plot(AM1)
 plot(rstudent(AM1))
 
+box_object <- boxcox(m2)
+
+lambda <- box_object$x[which.max(box_object$y)]
+diox_box_cox <- (df$DIOX ^ lambda - 1) / lambda
+
+m2_boxcox <- lm(diox_box_cox ~ 
+                  poly(O2COR,2)*PLANT + poly(NEFFEKT,2)*PLANT + poly(QRAT,2)*PLANT + 
+                  poly(O2COR,2)*LAB + poly(NEFFEKT,2)*LAB + poly(QRAT,1)*LAB +
+                  poly(O2COR,2)*TIME + poly(NEFFEKT,2)*TIME + poly(QRAT,1)*TIME +
+                  QROEG + TOVN + TROEG + POVN + CO2 + CO + SO2 + log(HCL) + H2O + 
+                  QROEG:PLANT + CO2:PLANT +
+                  log(HCL):LAB, data = df)
+
 #################### SORENS MODEL UPDATED #################################
-m5 <- lm(log(DIOX) ~ poly(O2COR,2)*PLANT + poly(NEFFEKT,2)*PLANT + poly(QRAT,2)*PLANT + 
+m5 <- lm(log(DIOX) ~ poly(O2COR,2)*PLANT + poly(NEFFEKT,2)*PLANT + poly(QRAT,2)*PLANT +
            poly(O2COR,2)*LAB + poly(NEFFEKT,2)*LAB + poly(QRAT,2)*LAB +
            poly(O2COR,2)*TIME + poly(NEFFEKT,2)*TIME + poly(QRAT,2)*TIME +
-           QROEG + TOVN + TROEG + POVN + CO2 + CO + SO2 + log(HCL) + H2O + QROEG:PLANT,
+           QROEG + TOVN + TROEG + POVN + CO2 + CO + SO2 + log(HCL) + H2O + QROEG:PLANT
+           ,
          data = df_con)
+
+m5_before <- lm((DIOX) ~ poly(O2COR,2)*PLANT + poly(NEFFEKT,2)*PLANT + poly(QRAT,2)*PLANT +
+           poly(O2COR,2)*LAB + poly(NEFFEKT,2)*LAB + poly(QRAT,2)*LAB +
+           poly(O2COR,2)*TIME + poly(NEFFEKT,2)*TIME + poly(QRAT,2)*TIME +
+           QROEG + TOVN + TROEG + POVN + CO2 + CO + SO2 + log(HCL) + H2O + QROEG:PLANT
+         ,
+         data = df_con)
+summary(m5_before)
+par(mfrow = c(2, 2))
+plot(m5_before, which = 1:4)
+
+box_object <- boxcox(m5_before)
+
+lambda <- box_object$x[which.max(box_object$y)]
+diox_box_cox <- (df$DIOX ^ lambda - 1) / lambda
+
+
 summary(m5)
 par(mfrow = c(2, 2))
-plot(m5)
+plot(m5, which = 1:4)
+
+shapiro.test(rstudent(m5))
+lillie.test(rstudent(m5))
+cvm.test(rstudent(m5))
+ad.test(rstudent(m5))
 
 ### REDUCTION
 drop1(m5, test="F")
@@ -555,9 +796,9 @@ plot(m5, which=1:4)
 # bptest(AM1) # hmm
 
 #################### COMPARISON ##################################
-c(AIC(AM1), BIC(AM1))
-c(AIC(m5), BIC(m5))
-c(AIC(model_c1), BIC(model_c1))
+c(AIC(AM3), BIC(AM3))
+# c(AIC(m5), BIC(m5))
+c(AIC(model_2_log), BIC(model_2_log))
 
 # models are nested, the reduction can not be performed
 anova(m5, AM1, model_c1)
@@ -580,6 +821,65 @@ pairs(df_part[, c("diox_trans", "O2COR", "NEFFEKT", "QRAT")],
       col=c(rep(1,12),2,rep(1,n-13)),
       cex=c(rep(1,12),2,rep(1,n-13)))
 
+#############################################################
+# df_without_missing <- na.omit(df_con)
+# attach(df_without_missing)
+AM3 <- lm(log(DIOX) ~ O2COR  + NEFFEKT + PLANT + TIME + LAB, data = df)
+
+scope <- ~ . + QROEG + TOVN + TROEG + POVN + CO2 + CO + SO2 + HCL + H2O +       # Passive variables
+  poly(O2COR,2) + poly(NEFFEKT,2) +  poly(QRAT,1) + poly(QRAT,2) +              # Active variables higher order terms
+  PLANT:poly(O2COR,1)   + PLANT:poly(O2COR,2) +                                 # PLANT interactions
+  PLANT:poly(NEFFEKT,1) + PLANT:poly(NEFFEKT,2) + 
+  PLANT:poly(QRAT,1)    + PLANT:poly(QRAT,2) + 
+  LAB:poly(O2COR,1)     + PLANT:poly(O2COR,2) +                                 # LAB interactions
+  LAB:poly(NEFFEKT,1)   + PLANT:poly(NEFFEKT,2) + 
+  LAB:poly(QRAT,1)      + PLANT:poly(QRAT,2) + 
+  TIME:poly(O2COR,1)    + TIME:poly(O2COR,2) +                                  # TIME interactions
+  TIME:poly(NEFFEKT,1)  + TIME:poly(NEFFEKT,2) + 
+  TIME:poly(QRAT,1)     + TIME:poly(QRAT,2) + 
+  poly(log(HCL),1) +  poly(log(HCL),2) +                                        # Higher order effects of log(HCL) and log(CO)
+  PLANT:poly(log(HCL),1) +  PLANT:poly(log(HCL),2) +
+  LAB:poly(log(HCL),1) +  LAB:poly(log(HCL),2) + 
+  TIME:poly(log(HCL),1) +  TIME:poly(log(HCL),2) + 
+  poly(log(CO),1) +  poly(log(CO),2) +  
+  PLANT:poly(log(CO),1) +  PLANT:poly(log(CO),2) +
+  LAB:poly(log(CO),1) +  LAB:poly(log(CO),2) + 
+  TIME:poly(log(CO),1) +  TIME:poly(log(CO),2)  + 
+  (O2COR*NEFFEKT*QRAT)^2
+
+
+add1(AM3, scope, test = "F")
+
+AM3 <- update(AM3, . ~ . + poly(log(HCL), 1))
+drop1(AM3, test = "F")
+add1(AM3, scope, test = "F")
+
+AM3 <- update(AM3, . ~ . + CO2)
+drop1(AM3, test = "F")
+add1(AM3, scope, test = "F")
+
+AM3 <- update(AM3, . ~ . + TROEG)
+drop1(AM3, test = "F")
+add1(AM3, scope, test = "F")
+
+AM3 <- update(AM3, . ~ . + TIME:poly(NEFFEKT, 1))
+drop1(AM3, test = "F")
+add1(AM3, scope, test = "F")
+
+AM3 <- update(AM3, . ~ . + POVN)
+drop1(AM3, test = "F")
+add1(AM3, scope, test = "F")
+
+AM3 <- update(AM3, . ~ . + poly(log(HCL), 2))
+drop1(AM3, test = "F")
+add1(AM3, scope, test = "F")
+
+summary(AM3)
+AM3 <- update(AM3, . ~ . - poly(log(HCL), 1) + poly(log(HCL), 2) - 
+                NEFFEKT + TIME:poly(NEFFEKT, 1))
+summary(AM3)
+
+
 ######## LIKELIHOOD ESTIMATION OF WEIGHTS #################
 ### testing stuff
 # par(mfrow = c(1, 1))
@@ -587,6 +887,8 @@ pairs(df_part[, c("diox_trans", "O2COR", "NEFFEKT", "QRAT")],
 # n = dim(trees)[1]
 # p = dim(trees)[2]
 # y = trees$Volume
+# 
+# boxcox(model_test)
 # 
 # design_matrix = model.matrix(model_test)
 # 
@@ -613,8 +915,14 @@ pairs(df_part[, c("diox_trans", "O2COR", "NEFFEKT", "QRAT")],
 # opt_2 <- nlminb(theta, objective_2)
 # opt_2$par
 
+AM3 <- lm(log(DIOX) ~ O2COR + PLANT + TIME + LAB + CO2 + TROEG + POVN + 
+            poly(log(HCL), 2) + TIME:poly(NEFFEKT, 1), data = data.frame(df))
+summary(AM3)
+c(AIC(AM3), BIC(AM3))
+
+
 #### doing it on our data
-model_optimization <- m5
+model_optimization <- AM3
 
 design_matrix = model.matrix(model_optimization)
 n = dim(design_matrix)[1]
@@ -642,9 +950,6 @@ standard_error = sqrt(diag(solve(hessian_matrix)))
 c(opt$par["weight"] - qnorm(0.975)*standard_error[length(standard_error)],
   opt$par["weight"] + qnorm(0.975)*standard_error[length(standard_error)])
 
-### look into likelihood based CI for weight parameter
-## LRT between model with one sigma and model with 2 sigmas
-
 ### PROFILE LIKELIHOOD CI
 profile_objective <- function(weight){
   fun.tmp <- function(theta_inner, weight_input){
@@ -656,7 +961,7 @@ profile_objective <- function(weight){
 }
 profile_objective(10)
 
-p1 <- seq(0.01, opt$par["weight"]*2.5, by = 0.05)
+p1 <- seq(-0.5, opt$par["weight"]*2.7, by = 0.01)
 logLp1 <- sapply(p1, profile_objective) ## note sapply!
 logLp1 <- logLp1 - min(logLp1) ## normalization
 L_CI_lower = min(p1[exp(-logLp1) > exp(-qchisq(0.95,df=1)/2)])
@@ -670,13 +975,14 @@ quadratic_approximation <- quadratic_approximation / max(quadratic_approximation
 par(mfrow = c(1,1))
 plot(p1, exp(-logLp1), type = "l",
      xlab="Weight", ylab="Profile Likelihood",
-     main="Comparison of Wald and Likelihood based Confidence Intervals")
+     main="The comparison between Wald's and Likelihood based Confidence Intervals")
 axis(side=1, at=seq(0, 10, by=1))
 lines(p1, rep(exp(-qchisq(0.95,df=1)/2), length(p1)), col = 2)
 rug(L_CI_lower, ticksize = 0.1, lwd = 2, col = "red")
 rug(L_CI_upper, ticksize = 0.1, lwd = 2, col = "red")
 c(L_CI_lower, L_CI_upper)
 lines(p1, quadratic_approximation, col = "blue")
+abline(v = opt$par["weight"], lty = 2)
 rug(opt$par["weight"] - qnorm(0.975)*standard_error[length(standard_error)],
     ticksize = 0.1, lwd = 2, col = "blue")
 rug(opt$par["weight"] + qnorm(0.975)*standard_error[length(standard_error)],
@@ -685,7 +991,21 @@ legend("topright", 95,
        legend=c("Profile likelihood", "Quadratic approximation",
                 "95% confidence interval"),
        col=c("black", "blue", "red"), lty = 1:1, cex=0.8,
-       inset = 0.02) 
+       inset = 0.02)
+
+c(opt$par["weight"] - qnorm(0.975)*standard_error[length(standard_error)],
+  opt$par["weight"] + qnorm(0.975)*standard_error[length(standard_error)])
+c(L_CI_lower, L_CI_upper)
+
+wald_statistic = (opt$par["weight"] - 1)/standard_error[length(standard_error)]
+
+# LRT
+ll_full <- -profile_objective(as.numeric(opt$par["weight"]))
+ll_test <- -profile_objective(1)
+LRT <- -2*(ll_test - (ll_full))
+p <- 1 - pchisq(LRT, df = 1)
+p         
+
 
 ### GLS
 
@@ -695,6 +1015,8 @@ gls_lm <- gls(log(DIOX) ~ O2COR + NEFFEKT + PLANT + TIME + LAB, data = df)
 anova(gls_model, model_c2)
 anova(gls_model, gls_lm)
 summary(gls_model)
+
+
 
 
 ### alternative parametrization
@@ -717,3 +1039,4 @@ opt_alternative$par
 hessian_matrix_alternative = hessian(objective_alternative, opt_alternative$par)
 standard_error_alternative = sqrt(diag(solve(hessian_matrix_alternative)))
 
+# ctrl alt t
