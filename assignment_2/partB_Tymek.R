@@ -148,13 +148,6 @@ scope <- ~. + swimmer*location*age*sex
 add1(m1, scope, test = "Chisq")
 
 
-
-
-AM3 <- update(AM3, . ~ . + poly(log(HCL), 1))
-drop1(AM3, test = "F")
-add1(AM3, scope, test = "F")
-
-
 m2 = glm(infections ~ swimmer*location*age + sex, offset = log(persons),
          family = poisson(link = "log"))
 summary(m2)
@@ -183,6 +176,11 @@ summary(m2)
 m4 = glm(infections ~ sex + swimmer*location*age, offset = log(persons),
          family = poisson(link = "log"))
 summary(m4)
+plot(m4)
+ (p_val <- 1 - pchisq(m4$deviance, df = m4$df.residual))
+
+
+
 drop1(m4, test = "Chisq")
 m4 <- update(m4, . ~ . - sex)
 drop1(m4, test = "Chisq")
@@ -198,6 +196,8 @@ m4 <- update(m4, . ~ . - swimmer:location)
 drop1(m4, test = "Chisq")
 m4 <- update(m4, . ~ . - swimmer)
 summary(m4)
+
+(p_val <- 1 - pchisq(m4$deviance, df = m4$df.residual))
 
 
 m4 = glm(infections ~ swimmer + location*age*sex, offset = log(persons),
