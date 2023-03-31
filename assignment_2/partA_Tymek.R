@@ -645,23 +645,24 @@ AIC(m4_subject) # much better AIC
 # 
 # 
 # ###############################################
-# # reestimation for wegiths
-# weights_vector = rep(1, dim(df)[1])
-# weights_vector[df$sex == "female"] = as.numeric(opt_profile$par["weight"])
-# 
-# lm2_weights <- lm(sqrt(clo) ~ poly(tInOp, 2) + poly(tOut, 2) + sex +
-#             tInOp:tOut, weights = weights_vector)
-# summary(lm2_weights)
-# 
-# par(mfrow = c(2, 2))
-# plot(lm2_weights)
-# par(mfrow = c(1, 1))
-# hist(lm2_weights$residuals[df$sex == "female"], col = "red", breaks = breaks_number,
-#      ylim = c(0, upper_limit))
-# hist(lm2_weights$residuals[df$sex != "female"], add=T, breaks = breaks_number,
-#      ylim = c(0, upper_limit), col = rgb(0, 0, 0.5, alpha = 0.1))
-# 
-# 
+# reestimation for wegiths
+weights_vector = rep(1, dim(df)[1])
+weights_vector[df$sex == "female"] = as.numeric(0.3)
+
+lm2_weights <- lm(sqrt(clo) ~ poly(tInOp, 2) + poly(tOut, 2) + sex +
+            tInOp:tOut, weights = weights_vector)
+summary(lm2_weights)
+AIC(lm2_weights)
+
+par(mfrow = c(2, 2))
+plot(lm2_weights)
+par(mfrow = c(1, 1))
+hist(lm2_weights$residuals[df$sex == "female"], col = "red", breaks = breaks_number,
+     ylim = c(0, upper_limit))
+hist(lm2_weights$residuals[df$sex != "female"], add=T, breaks = breaks_number,
+     ylim = c(0, upper_limit), col = rgb(0, 0, 0.5, alpha = 0.1))
+
+
 # ########################33
 # hessian_matrix = hessian(objective,opt$par)
 # standard_error = sqrt(diag(solve(hessian_matrix)))
@@ -777,43 +778,117 @@ weights_vector <- rep(1, dim(df)[1])
 weights_vector[df$sex == "female"] <- weight_female
 
 ############################################
-m1 = glm(clo ~ tInOp + tOut + sex, family = Gamma(link = "inverse"),
+
+m1 = glm(clo ~ tInOp + tOut, family = Gamma(link = "inverse"),
          data = df)
+
+### Weighted version
+weights_vector <- rep(1, dim(df)[1])
+weights_vector[df$sex == "female"] <- exp(-0.485523736)
+m1 = glm(clo ~ tInOp + tOut, family = Gamma(link = "log"),
+         data = df, weights = weights_vector)
 summary(m1)
-plot_residuals(m1)
+# plot_residuals(m1)
 par(mfrow = c(2, 2))
 plot(m1)
 
-X = model.matrix(m1)
-theta_initial = c(0.5, 0.5, 0.1, 0.5, 0.05)
+logLik(m1)
+# 'log Lik.' 448.0734 (df=5)
 
+X = model.matrix(m1)
+# predictions_scratch = X %*% as.numeric(m1$coefficients)
+# norm(1/m1$fitted.values - predictions_scratch)
+
+# weights_vector <- rep(1, dim(df)[1])
+theta_initial = c(m1$coefficients, 0.05, "female_weight" = -0.4)
 ### own optimization
 gamma_own <- function(theta){
-  mean = X %*% theta[1:dim(X)[2]]
-  shape_parameter = theta[length(theta)]
-  scale_parameter = mean/shape_parameter
-  return(-sum(dgamma(1/df$clo, shape = shape_parameter,
+  print(as.numeric(theta[4:5]))
+  
+  theta_linear_space = X %*% theta[1:dim(X)[2]]
+  # inverse transformation
+  mean = 1/theta_linear_space
+  # log transformation
+  # mean = exp(theta_linear_space)
+  
+  weights_vector[df$sex == "female"] <- exp(theta[length(theta)])
+  # modelling the dispersion parameter rather than precision
+  shape_parameter = (1/theta[length(theta) - 1])*weights_vector
+  # scale_parameter = rep(mean, length(shape_parameter))*shape_parameter
+  scale_parameter = mean*shape_parameter
+
+  # shape_parameter = 1/theta[length(theta) - 1]
+  # scale_parameter = mean*theta[length(theta) - 1]
+  return(-sum(dgamma(df$clo, shape = shape_parameter,
                      scale = scale_parameter, log = TRUE)))
 }
 gamma_own(theta_initial)
 opt <- nlminb(theta_initial, gamma_own)
-opt
+
+opt$par
+m1$coefficients
+gamma_own(as.numeric(opt$par))
+
+weights_vector[df$sex == "female"] <- exp(opt$par[length(opt$par)])
+
+# no convergence ...
+# 21.843165 
+# (Intercept)         tInOp          tOut               female_weight 
+# 0.859729982  -0.006571867  -0.010893395   9.230472971 -26.639816960
+# $objective
+# [1] -241583.1
+# 2.202545 
+
+# (Intercept)         tInOp          tOut               female_weight 
+# 1.031882907  -0.008516131  -0.012934006  16.369001352  -0.485523736 
+# kinda makes sense 1/16.36 = 0.06 - dispersion parameter
+optim_gamma <- optim(theta_initial, gamma_own, method = "CG")
+
+### Optimal stuff: 1/16.369001352  -0.485523736 
+
+# cbind(X %*% opt$par[1:3], m1$fitted.values)
+residuals <- X %*% opt$par[1:3] - m1$fitted.values
+c(mean(residuals), sd(residuals))
+
+c(1, 2, 3) / 3
+
+mui <- 15 + 2*X2 + 3*X3
+alphai <- exp(0.2 + 0.1*X2 + 0.3*X4)
+Y <- rgamma(500, shape=alphai, scale=mui/alphai)
+
+#### figuring stuff out
+x <- c(1, 2, 3)
+dgamma(x, shape = 0.05,
+       scale = c(1, 1, 2), log = TRUE)
+
+
+#### Likelihood poisson
+log.lik1 <- function(th) {
+  sum(dpois(y, exp(th[1]+th[2] * x), log = TRUE))
+}
+
+#### Find MLE and hessian
+fit1 <- optim(par = c(0, 0), fn = log.lik1, hessian = TRUE,
+              control=list(fnscale=-1))
+fit1
 
 
 # model_optimization <- m1
 weights_vector <- rep(1, dim(df)[1])
-objective_weights = function(weight_female_function){
-  # weights_vector <- rep(exp(weight_female_function), dim(df)[1])
-  # weights_vector <- rep(1/weight_female_function, dim(df)[1])
-  weights_vector[df$sex == "female"] <- exp(weight_female_function)
-  # weights_vector <- weights_vector 
-  # weights_vector = exp(weight_female_function)
-  m1_tmp = glm(clo ~ tInOp + tOut + sex, family = Gamma(link = "inverse"),
+objective_weights = function(theta){
+  print(theta)
+  weights_vector[df$sex == "female"] <-exp(theta)
+  # weights_vector <- theta[2]*weights_vector
+  m1_tmp = glm(clo ~ tInOp + tOut, family = Gamma(link = "inverse"),
                data = df, weights = weights_vector)
-  return(-as.numeric(logLik(m1_tmp)) / sum(weights_vector))
+  return(-as.numeric(logLik(m1_tmp)))
 }
-objective_weights(1)
-opt <- nlminb(4, objective_weights)
+
+# theta_initial = c(1, "dispersion" = 0.05)
+theta_initial = -0.5
+objective_weights(theta_initial)
+
+opt <- nlminb(theta_initial, objective_weights)
 exp(opt$par)
 
 weights_vector <- rep(1, dim(df)[1])
@@ -821,14 +896,57 @@ candidates <- seq(-2, 5, length.out = 100)
 AIC_list <- rep(NA, length(candidates))
 for (i in 1:length(candidates)){
   weights_vector[df$sex == "female"] <- exp(candidates[i])
-  # weights_vector <- rep(exp(candidates[i]), dim(df)[1])
-  # m1_checking <- update(m1,
-  #                       weights = weights_vector)
-  m1_tmp = glm(clo ~ tInOp + tOut + sex, family = Gamma(link = "inverse"),
+
+  m1_tmp = glm(clo ~ tInOp + tOut, family = Gamma(link = "inverse"),
                data = df, weights = weights_vector)
-  AIC_list[i] = AIC(m1_tmp) / sum(weights_vector)
+  AIC_list[i] = AIC(m1_tmp)
 }
 
+weights_vector = rep(1, dim(df)[1])
+weights_vector[df$sex == "female"] = as.numeric(0.3)
+lm2_weights <- lm(sqrt(clo) ~ poly(tInOp, 2) + poly(tOut, 2) + sex +
+                    tInOp:tOut, weights = weights_vector)
+summary(lm2_weights)
+AIC(lm2_weights)
+
+library(Gammareg)
+
+X1 <- rep(1, 500)
+X2 <- runif(500, 0, 30)
+X3 <- runif(500, 0, 15)
+X4 <- runif(500, 10, 20)
+mui <- 15 + 2*X2 + 3*X3
+alphai <- exp(0.2 + 0.1*X2 + 0.3*X4)
+Y <- rgamma(500, shape=alphai, scale=mui/alphai)
+X <- cbind(X1, X2, X3)
+Z <- cbind(X1, X2, X4)
+formula.mean = Y ~ X2 + X3
+formula.shape = ~ X2 + X4
+a=Gammareg(formula.mean, formula.shape, meanlink="ide")
+summary(a)
+
+X1 <- rep(1, dim(df)[1])
+X2 <- df$tInOp
+X3 <- df$tOut
+Z1 <- as.integer(df$sex == "female")
+Z2 <- as.integer(df$sex == "male")
+formula.mean = df$clo ~ X2 + X3
+formula.shape = ~ Z1
+a=Gammareg(formula.mean, formula.shape, meanlink="ide")
+summary(a)
+
+
+############### Linear model working !!!! ######################
+objective_weights_lm = function(weight_female_function){
+  weights_vector[df$sex == "female"] <- exp(weight_female_function)
+  m1_tmp = lm(clo ~ tInOp + tOut + sex, data = df, weights = weights_vector)
+  return(-as.numeric(logLik(m1_tmp)))
+}
+objective_weights_lm(1)
+opt <- nlminb(-0.5, objective_weights_lm)
+opt
+
+exp(opt$par) # 0.267269
 
 # weights_vector[df$sex == "female"] <- exp(2)
 weights_vector <- rep(5, dim(df)[1])
