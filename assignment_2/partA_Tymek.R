@@ -781,11 +781,13 @@ weights_vector[df$sex == "female"] <- weight_female
 
 m1 = glm(clo ~ tInOp + tOut, family = Gamma(link = "inverse"),
          data = df)
+logLik(m1)
 
 ### Weighted version
 weights_vector <- rep(1, dim(df)[1])
-weights_vector[df$sex == "female"] <- exp(-0.485523736)
-m1 = glm(clo ~ tInOp + tOut, family = Gamma(link = "log"),
+# weights_vector[df$sex == "female"] <- exp(-0.485523736)
+weights_vector[df$sex == "female"] <- exp(0.099)
+m1 = glm(clo ~ tInOp + tOut, family = Gamma(link = "inverse"),
          data = df, weights = weights_vector)
 summary(m1)
 # plot_residuals(m1)
@@ -796,29 +798,38 @@ logLik(m1)
 # 'log Lik.' 448.0734 (df=5)
 
 X = model.matrix(m1)
+X_dispersion = cbind(rep(1, dim(X)[1]), as.integer(df$sex == "female"))
 # predictions_scratch = X %*% as.numeric(m1$coefficients)
 # norm(1/m1$fitted.values - predictions_scratch)
 
-# weights_vector <- rep(1, dim(df)[1])
-theta_initial = c(m1$coefficients, 0.05, "female_weight" = -0.4)
+weights_vector <- rep(1, dim(df)[1])
+theta_initial = c(rep(1, length(m1$coefficients)), "dispersion" = -1, "female_weight" = -0.48)
+
+# theta_initial = c(rep(1, length(m1$coefficients)), 0.05)
 ### own optimization
 gamma_own <- function(theta){
   print(as.numeric(theta[4:5]))
   
   theta_linear_space = X %*% theta[1:dim(X)[2]]
   # inverse transformation
-  mean = 1/theta_linear_space
+  # mean = 1/theta_linear_space
   # log transformation
-  # mean = exp(theta_linear_space)
+  
+  # regressions
+  mean = exp(theta_linear_space)
+  dispersion = exp(X_dispersion %*% theta[4:5])
+  
+  # weights_vector[df$sex == "female"] <- exp(theta[length(theta)])
+  # modelling the dispersion parameter rather than precision
+  # scale_parameter = rep(mean, length(shape_parameter))*shape_parameter
   
   weights_vector[df$sex == "female"] <- exp(theta[length(theta)])
-  # modelling the dispersion parameter rather than precision
-  shape_parameter = (1/theta[length(theta) - 1])*weights_vector
-  # scale_parameter = rep(mean, length(shape_parameter))*shape_parameter
-  scale_parameter = mean*shape_parameter
+  shape_parameter = 1/dispersion
+  scale_parameter = mean*dispersion
 
   # shape_parameter = 1/theta[length(theta) - 1]
   # scale_parameter = mean*theta[length(theta) - 1]
+
   return(-sum(dgamma(df$clo, shape = shape_parameter,
                      scale = scale_parameter, log = TRUE)))
 }
@@ -829,7 +840,21 @@ opt$par
 m1$coefficients
 gamma_own(as.numeric(opt$par))
 
-weights_vector[df$sex == "female"] <- exp(opt$par[length(opt$par)])
+### with the package
+
+library(Gammareg)
+X2 <- df$tInOp
+X3 <- df$tOut
+Z1 <- as.integer(df$sex == "female")
+Z2 <- as.integer(df$sex == "male")
+formula.mean = df$clo ~ X2 + X3
+formula.shape = ~ Z1
+a=Gammareg(formula.mean, formula.shape, meanlink="log")
+summary(a)
+opt$par
+exp(opt$par[4:5])
+
+## THE SAME RESULTS YEAH!
 
 # no convergence ...
 # 21.843165 
@@ -925,21 +950,11 @@ formula.shape = ~ X2 + X4
 a=Gammareg(formula.mean, formula.shape, meanlink="ide")
 summary(a)
 
-X1 <- rep(1, dim(df)[1])
-X2 <- df$tInOp
-X3 <- df$tOut
-Z1 <- as.integer(df$sex == "female")
-Z2 <- as.integer(df$sex == "male")
-formula.mean = df$clo ~ X2 + X3
-formula.shape = ~ Z1
-a=Gammareg(formula.mean, formula.shape, meanlink="ide")
-summary(a)
-
 
 ############### Linear model working !!!! ######################
 objective_weights_lm = function(weight_female_function){
   weights_vector[df$sex == "female"] <- exp(weight_female_function)
-  m1_tmp = lm(clo ~ tInOp + tOut + sex, data = df, weights = weights_vector)
+  m1_tmp = lm(1/(clo) ~ tInOp + tOut, data = df, weights = weights_vector)
   return(-as.numeric(logLik(m1_tmp)))
 }
 objective_weights_lm(1)
