@@ -501,6 +501,15 @@ mean(acf1SubjDay)
 ### Different dispersions ######################################################
 
 #### Optimizing dispersion parameters ##########################################
+
+# Model
+glmGammaInv2 <- glm(clo ~ sex + poly(tInOp, 2) + poly(tOut, 2) + 
+                      sex:poly(tInOp, 2) + sex:poly(tOut, 2) + 
+                      poly(tInOp, 1):poly(tOut, 1) + 
+                      sex:poly(tInOp, 1):poly(tOut, 1),
+                    family = Gamma(link = "inverse"))
+
+
 # Negative log likelihood
 objective <- function(beta, formula){
   
@@ -568,26 +577,28 @@ tau <- seq(opt$par[14] - 0.5, opt$par[14] + 0.5, 0.01)
 profile_logLikelihood <- numeric(length(tau))
 for (i in 1:length(tau)){
   profile_logLikelihood[i] <- profile_objective(tau[i], formula = linModel)
-  print(c(i, tau[i], profile_Loglikelihood[i]))
+  print(c(i, tau[i], profile_logLikelihood[i]))
 }
 
 # Finding the profile likelihood confidence interval (see page 36)
 profile_likelihood <- exp(-profile_logLikelihood) 
 profile_likelihood <- profile_likelihood / max(profile_likelihood)
-profile_likelihood <- exp(profile_likelihood)
+# profile_likelihood <- exp(profile_likelihood)
 L_CI_lower <- min(tau[profile_likelihood > exp(-(1 / 2) *  qchisq(0.95, df=1))])
 L_CI_upper <- max(tau[profile_likelihood > exp(-(1 / 2) *  qchisq(0.95, df=1))])
 
 
 # Finding the quadratic approximation (Wald Confidence intervals) (see page 23)
-observed_hessian <- hessian(objective, opt$par, formula = linModel)
-observed_hessian_tau <- - observed_hessian[14, 14]
+# observed_hessian <- hessian(objective, opt$par, formula = linModel)
+# observed_hessian_tau <- - observed_hessian[14, 14]
+observed_hessian_tau <- hessian(profile_objective, opt$par[14], formula = linModel)
 quadratic_approx_logLik <- - opt$objective + 
-  (1 / 2) * observed_hessian_tau * (tau - opt$par[14])^2
+  (1 / 2) * -observed_hessian_tau * (tau - opt$par[14])^2
 quadratic_approx_Lik <- exp(quadratic_approx_logLik)
 quadratic_approx_Lik <- quadratic_approx_Lik / max(quadratic_approx_Lik)
 # plot(tau, quadratic_approx_Lik)
-standard_error = sqrt(diag(solve(observed_hessian)))[14]
+# standard_error = sqrt(diag(solve(observed_hessian)))[14]
+standard_error = sqrt(diag(solve(observed_hessian)))[1]
 
 
 # Plot of profile likelihood and quadratic approximation. 
