@@ -16,9 +16,12 @@
 
 
 ### Clean up ###################################################################
-rm(list = ls())
-if(!is.null(dev.list())) dev.off()
-
+rm(list=ls()) 
+print(utils::getSrcDirectory(function(){}))
+print(utils::getSrcFilename(function(){}, full.names = TRUE))
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+getwd()
+Sys.setenv(LANG = "en")
 
 ### Libraries ##################################################################
 
@@ -543,19 +546,29 @@ opt <- nlminb(initialBeta, objective, formula = linModel,
               control = list(eval.max = 1000, iter.max = 1000))
 opt
 
+observed_hessian_full <- hessian(objective, opt$par, formula = linModel)
+standard_error_full = sqrt(diag(solve(observed_hessian_full)))
+
+Wald_lower_CI_full = opt$par - qnorm(0.975)*standard_error_full
+Wald_upper_CI_full = opt$par + qnorm(0.975)*standard_error_full
+
+round(cbind(opt$par, standard_error_full,
+            Wald_lower_CI_full, Wald_upper_CI_full), 2)
+
+
 
 # Control of results
 stdDevResid <- rstandard(glmGammaInv2, type = "deviance")
 sd(stdDevResid[sex == "female"])^2 / sd(stdDevResid[sex == "male"])^2
 exp(opt$par[length(opt$par)])
 
-### Gammareg ###
-# formula.mean = linModel
-# Z1 <- as.integer(df_data$sex == "female")
-# formula.shape = ~ Z1
-# a=Gammareg(formula.mean, formula.shape, meanlink="log")
-# summary(a)
-# opt$par
+## Gammareg ###
+formula.mean = linModel
+Z1 <- as.integer(df_data$sex == "female")
+formula.shape = ~ Z1
+a=Gammareg(formula.mean, formula.shape, meanlink="log")
+summary(a)
+opt$par
 
 
 #### Profile likelihood ########################################################
@@ -588,22 +601,29 @@ L_CI_lower <- min(tau[profile_likelihood > exp(-(1 / 2) *  qchisq(0.95, df=1))])
 L_CI_upper <- max(tau[profile_likelihood > exp(-(1 / 2) *  qchisq(0.95, df=1))])
 
 
+round(cbind(opt$par[length(opt$par)], Wald_lower_CI_full[length(opt$par)],
+            Wald_upper_CI_full[length(opt$par)], L_CI_lower, L_CI_upper), 2)
+round(exp(cbind(opt$par[length(opt$par)], Wald_lower_CI_full[length(opt$par)],
+          Wald_upper_CI_full[length(opt$par)], L_CI_lower, L_CI_upper)), 2)
+
+c(L_CI_lower, L_CI_upper)
+
 # Finding the quadratic approximation (Wald Confidence intervals) (see page 23)
 # observed_hessian <- hessian(objective, opt$par, formula = linModel)
 # observed_hessian_tau <- - observed_hessian[14, 14]
 observed_hessian_tau <- hessian(profile_objective, opt$par[14], formula = linModel)
 quadratic_approx_logLik <- - opt$objective + 
-  (1 / 2) * -observed_hessian_tau * (tau - opt$par[14])^2
+  (1 / 2) * -as.numeric(observed_hessian_tau) * (tau - opt$par[14])^2
 quadratic_approx_Lik <- exp(quadratic_approx_logLik)
 quadratic_approx_Lik <- quadratic_approx_Lik / max(quadratic_approx_Lik)
 # plot(tau, quadratic_approx_Lik)
 # standard_error = sqrt(diag(solve(observed_hessian)))[14]
-standard_error = sqrt(diag(solve(observed_hessian)))[1]
+standard_error = sqrt(diag(solve(observed_hessian_tau)))[1]
 
 
 # Plot of profile likelihood and quadratic approximation. 
 par(mfrow = c(1,1))
-plot(tau, profile_likelihood, type = "l",
+plot(tau, profile_likelihood, type = "l", lty = 3, lwd = 3,
      xlab="Female Dispersion Weight", ylab="Profile Likelihood",
      main="The comparison between Wald's and Likelihood based Confidence Intervals")
 lines(tau, rep(exp(-(1 / 2) *  qchisq(0.95, df=1)), length(tau)), col = 2)
@@ -611,7 +631,7 @@ rug(L_CI_lower, ticksize = 0.2, lwd = 2, col = "red")
 rug(L_CI_upper, ticksize = 0.2, lwd = 2, col = "red")
 c(L_CI_lower, L_CI_upper)
 abline(v = opt$par["female_weight"], lty = 2)
-lines(tau, quadratic_approx_Lik, col = "blue")
+lines(tau, quadratic_approx_Lik, col = "blue", lty = 2)
 rug(opt$par["female_weight"] - qnorm(0.975) * standard_error,
     ticksize = 0.2, lwd = 2, col = "blue")
 rug(opt$par["female_weight"] + qnorm(0.975) * standard_error,
@@ -619,6 +639,9 @@ rug(opt$par["female_weight"] + qnorm(0.975) * standard_error,
 opt$par["female_weight"] - qnorm(0.975) * standard_error * c(1, -1)
 legend("topright", 95,
        legend=c("Profile likelihood", "Quadratic approximation",
-                "95% confidence interval"),
-       col=c("black", "blue", "red"), lty = 1:1, cex=0.8,
+                "95% Likelihood confidence interval",
+                "95% Wald confidence interval"),
+       col=c("black", "blue", "red", "blue"), lty = c(3, 1, 1, 1), cex=0.8,
        inset = 0.02)
+
+
