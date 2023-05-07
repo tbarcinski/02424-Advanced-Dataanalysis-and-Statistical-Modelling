@@ -131,21 +131,34 @@ df[c("tOut_rescaled", "tInOp_rescaled")] = cbind(
   (df$tInOp - mean(df$tInOp)) / sd(df$tInOp)
 )
 attach(df)
+# the convergence warnings are still present :(
 
 ### Log transformation ---------------------------------------------------------
-mlog_1 = lme(log(clo) ~ poly(tInOp, 2)*poly(tOut, 2)*sex,
-            random = ~1|subjId, method = "ML")
-summary(mlog_1)
+mlog_1 = lmer(log(clo) ~ poly(tInOp, 2)*poly(tOut, 2)*sex + 
+            (1|subjId), REML = F)
+# summary(mlog_1)
 plot_residuals_nlme(mlog_1)
 
 mlog_2 = lmer(log(clo) ~ poly(tInOp, 2)*poly(tOut, 2)*sex + 
             (sex + tOut + tInOp|subjId), REML = F)
-summary(mlog_2)
+# summary(mlog_2)
 
-random.effects(mlog_2)
+mlog_3 = lmer(log(clo) ~ poly(tInOp, 2)*poly(tOut, 2)*sex + 
+                (sex*tOut*tInOp|subjId), REML = F)
+# model failed to converge
+# summary(mlog_3)
+
 anova(mlog_2)
 
-### Model reduction -------------------------------------------------------------
+#### reduction of random effects -----------------------------------------------
+anova(mlog_2, mlog_1, refit = FALSE)
+LRT <- 2 * abs(logLik(mlog_2) - logLik(mlog_1))
+p <- 1 - pchisq(LRT, df = abs(attr(logLik(mlog_2), "df") -
+                             attr(logLik(mlog_1), "df")))
+c(LRT, p)
+# we can't reduce to just the random intercept
+
+#### reduction of fixed effects -----------------------------------------------
 drop1(mef_1, test = "Chisq")
 mef_1 = update(mef_1, . ~ . -  poly(tInOp, 1):poly(tOut, 1))
 
@@ -157,24 +170,58 @@ drop1(mef_1, test = "Chisq")
 summary(mef_1)
 
 ### sqrt transformation --------------------------------------------------------
+msqrt_1 = lmer(sqrt(clo) ~ poly(tInOp, 2)*poly(tOut, 2)*sex +
+             (1|subjId),  REML = F)
+# summary(msqrt_1)
+plot_residuals_nlme(mlog_1)
+
+sqrt_1_lme = lme(sqrt(clo) ~ poly(tInOp, 2)*poly(tOut, 2)*sex,
+                   random = ~1|subjId, method = "ML")
+logLik(sqrt_1_lme, REML = F)
+
+msqrt_2 = lmer(sqrt(clo) ~ poly(tInOp, 2)*poly(tOut, 2)*sex + 
+                (sex + tOut + tInOp|subjId), REML = F)
+# summary(msqrt_2)
+
+msqrt_3 = lmer(sqrt(clo) ~ poly(tInOp, 2)*poly(tOut, 2)*sex + 
+                (sex*tOut*tInOp|subjId), REML = F)
+# model failed to converge
+
+#### reduction of random effects -----------------------------------------------
+anova(msqrt_2, msqrt_1, refit = FALSE)
+LRT <- -2 *(logLik(msqrt_1) - logLik(msqrt_2))
+p <- 1 - pchisq(LRT, df = abs(attr(logLik(msqrt_2), "df") -
+                                attr(logLik(msqrt_1), "df")))
+c(LRT, p)
+# can not reduce to the simple random effects
+
+#### reduction of fixed effects -----------------------------------------------
 
 ## Creation of the Hat matrix --------------------------------------------------
 
-## Derivatives for the transformations -----------------------------------------
+## Comparison of transformations -----------------------------------------
 sqrt_derivative <- function(y_input){
   return(1/(2*sqrt(y_input)))
 }
-to_subtract <- sum(log(abs(sqrt_derivative(clo))))
-AIC_sqrt_original <- AIC(lm2) - 2*to_subtract
-BIC_sqrt_original <- BIC(lm2) - 2*to_subtract
-
 log_derivative <- function(y_input){
   return(1/y_input)
 }
-to_subtract_log <- sum(log(abs(log_derivative(clo))))
-AIC_log_original <- AIC(lm2_log) - 2*to_subtract_log
-BIC_log_original <- BIC(lm2_log) - 2*to_subtract_log
 
+to_subtract <- sum(log(abs(sqrt_derivative(clo))))
+AIC_sqrt_original <- AIC(msqrt_2) - 2*to_subtract
+BIC_sqrt_original <- BIC(msqrt_2) - 2*to_subtract
+
+to_subtract_log <- sum(log(abs(log_derivative(clo))))
+AIC_log_original <- AIC(mlog_2) - 2*to_subtract_log
+BIC_log_original <- BIC(mlog_2) - 2*to_subtract_log
+
+results_models <- cbind(
+  c(AIC_sqrt_original, AIC_log_original),
+  c(BIC_sqrt_original, BIC_log_original)
+)
+rownames(results_models) <- c("sqrt", "log")
+colnames(results_models) <- c("AIC_originla_domain", "BIC_originla_domain")
+results_models
 
 # reestimation of the model
 mef_1 = lme(formula(mef_1), random = ~1|subjId, method = "REML")
@@ -309,6 +356,15 @@ rho.sq<-2.3863954
 c(nu.sq=nu.sq, sigma.sq=sigma.sq, tau.sq=tau.sq, rho.sq=rho.sq)
 
 # TEST FOR THE NUGGET EFFECT AS IN LECTURE 9 R CODE
+
+## So we prefer exp struct.
+fit.exp
+fit.exp2<- lme(lnc~month+treatm+month:treatm, random=~1|cage,
+               correlation=corExp(form=~as.numeric(month)|cage,
+                                  nugget=FALSE),
+               data=rats, method="ML")
+
+anova(fit.exp,fit.exp2) ## Hence we should exclude the "nugget"
 
 
 # Graphical presentation -------------------------------------------------------
