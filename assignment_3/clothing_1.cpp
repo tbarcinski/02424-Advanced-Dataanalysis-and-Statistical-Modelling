@@ -4,8 +4,8 @@ template<class Type>
 Type objective_function<Type>::operator() ()
 {
   DATA_VECTOR(y);                                 // Data vector transmitted from R
-  DATA_VECTOR(mu);                                 // Data vector transmitted from R
   DATA_VECTOR(sex);
+  
   DATA_FACTOR(subjectId_factor);                  // Data vector transmitted from R
   
   PARAMETER_VECTOR(u);                             // Random effects

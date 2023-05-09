@@ -7,7 +7,7 @@ Type objective_function<Type>::operator() ()
   DATA_VECTOR(sex);
   
   DATA_FACTOR(subjectId_factor);                  // Data vector transmitted from R
-  DATA_FACTOR(subjectId_day_factor);                  // Data vector transmitted from R
+  DATA_FACTOR(subjectId_day_factor);              // Data vector transmitted from R
   
   PARAMETER_VECTOR(u);                             // Random effects
   PARAMETER_VECTOR(v);                             // Random effects
